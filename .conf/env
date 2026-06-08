@@ -1,0 +1,11 @@
+Get-Service | ForEach-Object { 
+    try { 
+        $path = (Get-WmiObject Win32_Service -Filter "Name='$($_.Name)'").PathName -replace '"' 
+        if ($path) { 
+            $acl = Get-Acl $path 
+            if ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone|Users|Authenticated Users' -and $_.FileSystemRights -match 'Write|FullControl' }) { 
+                [PSCustomObject]@{ ServiceName = $_.Name; Path = $path } 
+            } 
+        } 
+    } catch {} 
+}
