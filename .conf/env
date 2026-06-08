@@ -1,11 +1,23 @@
-Get-Service | ForEach-Object { 
-    try { 
-        $path = (Get-WmiObject Win32_Service -Filter "Name='$($_.Name)'").PathName -replace '"' 
-        if ($path) { 
-            $acl = Get-Acl $path 
-            if ($acl.Access | Where-Object { $_.IdentityReference -match 'Everyone|Users|Authenticated Users' -and $_.FileSystemRights -match 'Write|FullControl' }) { 
-                [PSCustomObject]@{ ServiceName = $_.Name; Path = $path } 
-            } 
-        } 
-    } catch {} 
+Get-WmiObject win32_service | Where-Object {$_.PathName -ne $null} | ForEach-Object {
+    $servicePath = $_.PathName -replace '"', ''
+    $servicePath = $servicePath.Split()[0]
+    
+    if (Test-Path $servicePath) {
+        $acl = Get-Acl $servicePath
+        $isWritable = $acl.Access | Where-Object {
+            ($_.FileSystemRights -match "Write|FullControl|Modify") -and
+            ($_.IdentityReference -match "Users|Everyone|BUILTIN\\Users")
+        }
+        
+        if ($isWritable) {
+            [PSCustomObject]@{
+                ServiceName = $_.Name
+                DisplayName = $_.DisplayName
+                Path = $servicePath
+                StartMode = $_.StartMode
+                State = $_.State
+                WritableBy = ($isWritable.IdentityReference -join ", ")
+            }
+        }
+    }
 }
