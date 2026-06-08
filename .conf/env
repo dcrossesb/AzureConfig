@@ -1,22 +1,37 @@
 Get-WmiObject win32_service | Where-Object {$_.PathName -ne $null} | ForEach-Object {
-    $servicePath = $_.PathName -replace '"', ''
-    $servicePath = $servicePath.Split()[0]
+    $servicePath = $_.PathName -replace '"', '' -replace ' .*$', ''
+    
+    if (Test-Path $servicePath -ErrorAction SilentlyContinue) {
+        try {
+            $acl = Get-Acl $servicePath -ErrorAction Stop
+            $writable = $acl.Access | Where-Object {
+                ($_.FileSystemRights -match "Write|FullControl|Modify") -and
+                ($_.IdentityReference -match "Users|Everyone|Authenticated Users")
+            }
+            
+            if ($writable) {
+                [PSCustomObject]@{
+                    ServiceName = $_.Name
+                    Path = $servicePath
+                    WritableBy = ($writable.IdentityReference -join ", ")
+                }
+            }
+        }
+        catch {
+            # Continue
+        }
+    }
+}
+
+Get-WmiObject win32_service | Where-Object {$_.PathName -ne $null} | ForEach-Object {
+    $servicePath = $_.PathName -replace '"', '' -replace ' .*$', ''
     
     if (Test-Path $servicePath) {
-        $acl = Get-Acl $servicePath
-        $isWritable = $acl.Access | Where-Object {
-            ($_.FileSystemRights -match "Write|FullControl|Modify") -and
-            ($_.IdentityReference -match "Users|Everyone|BUILTIN\\Users")
-        }
-        
-        if ($isWritable) {
+        $icacls = icacls $servicePath 2>$null
+        if ($icacls -match "(BUILTIN\\Users|Everyone|Authenticated Users).*(F|M|W)") {
             [PSCustomObject]@{
                 ServiceName = $_.Name
-                DisplayName = $_.DisplayName
                 Path = $servicePath
-                StartMode = $_.StartMode
-                State = $_.State
-                WritableBy = ($isWritable.IdentityReference -join ", ")
             }
         }
     }
